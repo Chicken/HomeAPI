@@ -65,7 +65,7 @@ app.get("/data", async (req, res) => {
   });
 });
 
-app.get("/electricity_price", async (req, res) => {
+app.get("/electricity_prices", async (req, res) => {
   if (req.query.key !== process.env.KEY) {
     res.status(401).send({
       status: "Wrong key"
@@ -107,7 +107,7 @@ app.get("/electricity_price", async (req, res) => {
   let tomorrowMostExpensive = null;
   let tomorrowNow = null;
 
-  if (tomorrowPrices.length > 0) {
+  if (tomorrowPrices.length > 12) {
     tomorrowPricesAvg = parseFloat((tomorrowPrices.reduce((acc, entry) => acc + entry.price, 0) / tomorrowPrices.length).toFixed(3));
     tomorrowCheapest = tomorrowPrices.reduce((acc, entry) => entry.price < acc.price ? entry : acc, tomorrowPrices[0]);
     tomorrowMostExpensive = tomorrowPrices.reduce((acc, entry) => entry.price > acc.price ? entry : acc, tomorrowPrices[0]);
