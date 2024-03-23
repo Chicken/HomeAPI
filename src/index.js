@@ -5,6 +5,8 @@ require("dotenv").config();
 const app = express();
 app.listen(process.env.PORT);
 
+process.env.TZ = "Europe/Helsinki";
+
 const pool = mariadb.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -60,5 +62,73 @@ app.get("/data", async (req, res) => {
     time,
     electricity: electricity[0],
     water: water[0],
+  });
+});
+
+app.get("/electricity_price", async (req, res) => {
+  if (req.query.key !== process.env.KEY) {
+    res.status(401).send({
+      status: "Wrong key"
+    });
+    return;
+  }
+  let conn = await pool.getConnection().catch(() => null);
+  if (!conn) {
+    res.status(500).send({
+      status: "Failed to get a database connection"
+    });
+    return;
+  }
+  const prices = await conn.query("SELECT time, price FROM electricity_prices ORDER BY time DESC LIMIT 50").catch(() => null);
+  conn.release();
+  if (!prices) {
+    res.status(500).send({
+      status: "Failed to get data",
+    });
+    return;
+  }
+  const today = new Date();
+  const now = Math.floor(Date.now() / 1000);
+  const startOfToday = Math.floor(new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() / 1000);
+  const endOfToday = Math.floor(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).getTime() / 1000);
+  const startOfTomorrow = Math.floor(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).getTime() / 1000);
+  const endOfTomorrow = Math.floor(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2).getTime() / 1000);
+
+  const todayPrices = prices.filter((entry) => entry.time >= startOfToday && entry.time < endOfToday);
+  const tomorrowPrices = prices.filter((entry) => entry.time >= startOfTomorrow && entry.time < endOfTomorrow);
+
+  const todayPricesAvg = parseFloat((todayPrices.reduce((acc, entry) => acc + entry.price, 0) / todayPrices.length).toFixed(3));
+  const todayCheapest = todayPrices.reduce((acc, entry) => entry.price < acc.price ? entry : acc, todayPrices[0]);
+  const todayMostExpensive = todayPrices.reduce((acc, entry) => entry.price > acc.price ? entry : acc, todayPrices[0]);
+  const todayNow = todayPrices.findLast((entry) => entry.time > now);
+
+  let tomorrowPricesAvg = null;
+  let tomorrowCheapest = null;
+  let tomorrowMostExpensive = null;
+  let tomorrowNow = null;
+
+  if (tomorrowPrices.length > 0) {
+    tomorrowPricesAvg = parseFloat((tomorrowPrices.reduce((acc, entry) => acc + entry.price, 0) / tomorrowPrices.length).toFixed(3));
+    tomorrowCheapest = tomorrowPrices.reduce((acc, entry) => entry.price < acc.price ? entry : acc, tomorrowPrices[0]);
+    tomorrowMostExpensive = tomorrowPrices.reduce((acc, entry) => entry.price > acc.price ? entry : acc, tomorrowPrices[0]);
+    tomorrowNow = tomorrowPrices.findLast((entry) => entry.time > now + 24 * 60 * 60);
+  }
+
+  res.status(200).send({
+    now: now,
+    today: {
+      avg: todayPricesAvg,
+      chepeast: todayCheapest,
+      mostExpensive: todayMostExpensive,
+      now: todayNow,
+      prices: todayPrices,
+    },
+    tomorrow: {
+      avg: tomorrowPricesAvg,
+      chepeast: tomorrowCheapest,
+      mostExpensive: tomorrowMostExpensive,
+      now: tomorrowNow,
+      prices: tomorrowPrices,
+    },
   });
 });
