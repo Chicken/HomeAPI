@@ -106,12 +106,14 @@ app.get("/electricity_prices", async (req, res) => {
   let tomorrowCheapest = null;
   let tomorrowMostExpensive = null;
   let tomorrowNow = null;
+  let tomorrowPricesRes = null;
 
   if (tomorrowPrices.length > 12) {
     tomorrowPricesAvg = parseFloat((tomorrowPrices.reduce((acc, entry) => acc + entry.price, 0) / tomorrowPrices.length).toFixed(3));
     tomorrowCheapest = tomorrowPrices.reduce((acc, entry) => entry.price < acc.price ? entry : acc, tomorrowPrices[0]);
     tomorrowMostExpensive = tomorrowPrices.reduce((acc, entry) => entry.price > acc.price ? entry : acc, tomorrowPrices[0]);
     tomorrowNow = tomorrowPrices.findLast((entry) => entry.time > now + 24 * 60 * 60);
+    tomorrowPricesRes = tomorrowPrices;
   }
 
   res.status(200).send({
@@ -128,7 +130,7 @@ app.get("/electricity_prices", async (req, res) => {
       chepeast: tomorrowCheapest,
       mostExpensive: tomorrowMostExpensive,
       now: tomorrowNow,
-      prices: tomorrowPrices,
+      prices: tomorrowPricesRes,
     },
   });
 });
