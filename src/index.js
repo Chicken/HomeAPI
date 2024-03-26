@@ -7,6 +7,8 @@ app.listen(process.env.PORT);
 
 process.env.TZ = "Europe/Helsinki";
 
+const electricityMargin = parseFloat(process.env.ELECTRICITY_MARGIN)
+
 const pool = mariadb.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -79,7 +81,7 @@ app.get("/electricity_prices", async (req, res) => {
     });
     return;
   }
-  const prices = await conn.query("SELECT time, price FROM electricity_prices ORDER BY time DESC LIMIT 50").catch(() => null);
+  const prices = await conn.query("SELECT time, price, alv FROM electricity_prices ORDER BY time DESC LIMIT 50").catch(() => null);
   conn.release();
   if (!prices) {
     res.status(500).send({
@@ -94,13 +96,21 @@ app.get("/electricity_prices", async (req, res) => {
   const startOfTomorrow = Math.floor(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).getTime() / 1000);
   const endOfTomorrow = Math.floor(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2).getTime() / 1000);
 
-  const todayPrices = prices.filter((entry) => entry.time >= startOfToday && entry.time < endOfToday);
-  const tomorrowPrices = prices.filter((entry) => entry.time >= startOfTomorrow && entry.time < endOfTomorrow);
+  const todayPrices = prices.filter((entry) => entry.time >= startOfToday && entry.time < endOfToday).map(entry => {
+    entry.price = parseFloat((entry.price * (1 + entry.alv) + electricityMargin).toFixed(3));
+    delete entry.alv;
+    return entry;
+  });
+  const tomorrowPrices = prices.filter((entry) => entry.time >= startOfTomorrow && entry.time < endOfTomorrow).map(entry => {
+    entry.price = parseFloat((entry.price * (1 + entry.alv) + electricityMargin).toFixed(3));
+    delete entry.alv;
+    return entry;
+  });
 
   const todayPricesAvg = parseFloat((todayPrices.reduce((acc, entry) => acc + entry.price, 0) / todayPrices.length).toFixed(3));
   const todayCheapest = todayPrices.reduce((acc, entry) => entry.price < acc.price ? entry : acc, todayPrices[0]);
   const todayMostExpensive = todayPrices.reduce((acc, entry) => entry.price > acc.price ? entry : acc, todayPrices[0]);
-  const todayNow = todayPrices.findLast((entry) => entry.time > now);
+  const todayNow = todayPrices.find((entry) => entry.time < now);
 
   let tomorrowPricesAvg = null;
   let tomorrowCheapest = null;
@@ -112,7 +122,7 @@ app.get("/electricity_prices", async (req, res) => {
     tomorrowPricesAvg = parseFloat((tomorrowPrices.reduce((acc, entry) => acc + entry.price, 0) / tomorrowPrices.length).toFixed(3));
     tomorrowCheapest = tomorrowPrices.reduce((acc, entry) => entry.price < acc.price ? entry : acc, tomorrowPrices[0]);
     tomorrowMostExpensive = tomorrowPrices.reduce((acc, entry) => entry.price > acc.price ? entry : acc, tomorrowPrices[0]);
-    tomorrowNow = tomorrowPrices.findLast((entry) => entry.time > now + 24 * 60 * 60);
+    tomorrowNow = tomorrowPrices.find((entry) => entry.time < now + 24 * 60 * 60);
     tomorrowPricesRes = tomorrowPrices;
   }
 
