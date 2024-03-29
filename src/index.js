@@ -5,9 +5,27 @@ require("dotenv").config();
 const app = express();
 app.listen(process.env.PORT);
 
-process.env.TZ = "Europe/Helsinki";
+app.set("trust proxy", process.env.TRUST_PROXY === "true");
+const ratelimitMap = new Map();
+const publicRequestPerMin = parseInt(process.env.PUBLIC_REQ_PER_MIN);
+function publicRatelimit(req, res, next) {
+  if (!ratelimitMap.has(req.ip)) ratelimitMap.set(req.ip, { count: 0 });
+  const ratelimit = ratelimitMap.get(req.ip);
+  if (ratelimit.count >= publicRequestPerMin) {
+    res.status(429).send({
+      status: "Too many requests"
+    });
+    return;
+  }
+  ratelimit.count++;
+  setTimeout(() => {
+    const rl = ratelimitMap.get(req.ip);
+    if (rl) rl.count--;
+  }, 60 * 1000);
+  next();
+}
 
-const electricityMargin = parseFloat(process.env.ELECTRICITY_MARGIN)
+process.env.TZ = "Europe/Helsinki";
 
 const pool = mariadb.createPool({
   host: process.env.DB_HOST,
@@ -67,13 +85,9 @@ app.get("/data", async (req, res) => {
   });
 });
 
-app.get("/electricity_prices", async (req, res) => {
-  if (req.query.key !== process.env.KEY) {
-    res.status(401).send({
-      status: "Wrong key"
-    });
-    return;
-  }
+app.get("/electricity_prices", publicRatelimit, async (req, res) => {
+  const electricityMargin = typeof req.query.margin === "string" && !Number.isNaN(parseFloat(req.query.margin)) ? parseFloat(req.query.margin) : 0;
+
   let conn = await pool.getConnection().catch(() => null);
   if (!conn) {
     res.status(500).send({
