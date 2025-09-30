@@ -95,7 +95,7 @@ app.get("/electricity_prices", publicRatelimit, async (req, res) => {
     });
     return;
   }
-  const prices = await conn.query("SELECT time, price, alv FROM electricity_prices ORDER BY time DESC LIMIT 50").catch(() => null);
+  const prices = await conn.query("SELECT time, price, alv FROM electricity_prices ORDER BY time DESC LIMIT 300").catch(() => null);
   conn.release();
   if (!prices) {
     res.status(500).send({
